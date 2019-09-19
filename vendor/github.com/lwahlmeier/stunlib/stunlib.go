@@ -231,7 +231,11 @@ func (spb *StunPacketBuilder) SetPaddingByte(b byte) *StunPacketBuilder {
 }
 
 func (spb *StunPacketBuilder) SetAddress(ua *net.UDPAddr) *StunPacketBuilder {
-	aba := []byte(ua.IP)
+	ip := ua.IP.To4()
+	if ip == nil {
+		ip = ua.IP
+	}
+	aba := []byte(ip)
 	var saba []byte
 	if len(aba) == 4 {
 		saba = make([]byte, 8)
@@ -247,7 +251,11 @@ func (spb *StunPacketBuilder) SetAddress(ua *net.UDPAddr) *StunPacketBuilder {
 }
 
 func (spb *StunPacketBuilder) SetXORAddress(ua *net.UDPAddr) *StunPacketBuilder {
-	aba := spb.tid.MaskAddress([]byte(ua.IP))
+	ip := ua.IP.To4()
+	if ip == nil {
+		ip = ua.IP
+	}
+	aba := spb.tid.MaskAddress([]byte(ip))
 	var saba []byte
 	if len(aba) == 4 {
 		saba = make([]byte, 8)
@@ -262,7 +270,7 @@ func (spb *StunPacketBuilder) SetXORAddress(ua *net.UDPAddr) *StunPacketBuilder 
 	return spb
 }
 
-func (spb *StunPacketBuilder) ClearAttribues() *StunPacketBuilder {
+func (spb *StunPacketBuilder) ClearAttributes() *StunPacketBuilder {
 	spb.attribs = make([]StunAttribute, 0)
 	spb.attribsBuffer = make([][]byte, 0)
 	return spb

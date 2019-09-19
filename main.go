@@ -182,7 +182,7 @@ func poolWaiter(reader chan *StunRead) {
 		}
 		log.Debug("Got Stun Packet from:{}", sr.addr)
 		stunRequestsTotal.Inc()
-		rsp := sp.ToBuilder().ClearAttribues().SetXORAddress(sr.addr).Build()
+		rsp := sp.ToBuilder().ClearAttributes().SetStunMessage(stunlib.SMSuccess).SetXORAddress(sr.addr).SetAddress(sr.addr).Build()
 		l, _ := sr.conn.WriteToUDP(rsp.GetBytes(), sr.addr)
 		if l == len(rsp.GetBytes()) {
 			stunProcessLatency.Observe(time.Since(sr.readTime).Seconds())

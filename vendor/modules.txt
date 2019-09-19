@@ -23,7 +23,7 @@ github.com/hashicorp/hcl/json/scanner
 github.com/hashicorp/hcl/json/token
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
-# github.com/lwahlmeier/stunlib v0.0.0-20190918044833-8cc4cee90077
+# github.com/lwahlmeier/stunlib v0.0.0-20190919034622-748fb4b54cac
 github.com/lwahlmeier/stunlib
 # github.com/magiconair/properties v1.8.0
 github.com/magiconair/properties
