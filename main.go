@@ -63,6 +63,8 @@ var stunGeoIPQueueSize = promauto.NewGauge(prometheus.GaugeOpts{
 })
 
 func main() {
+	var err error
+
 	config = viper.New()
 	config.SetEnvPrefix("stunning")
 	config.AutomaticEnv()
@@ -99,7 +101,7 @@ func main() {
 	cmd.PersistentFlags().String("geoIPPath", "/tmp/none", "Path to use for GeoIPDB lookups")
 	config.BindPFlag("geoIPPath", cmd.PersistentFlags().Lookup("geoIPPath"))
 
-	err := cmd.Execute()
+	err = cmd.Execute()
 	CheckError(err)
 }
 
@@ -126,6 +128,7 @@ func cMain(cmd *cobra.Command, args []string) {
 	logGeoIP := config.GetBool("logGeoIP")
 	stunServers := make([]*StunServer, 0)
 	rc := make(chan *StunRead, 500)
+	endLoop := make(chan bool)
 	ipc := make(chan net.IP, 500)
 	log.Info("Stun Addresses:{}", stunAddress)
 	log.Info("Metrics Address:{}", metricsAddress)
@@ -139,7 +142,7 @@ func cMain(cmd *cobra.Command, args []string) {
 		stunServers = append(stunServers, &StunServer{readChan: rc, conn: conn, geoIPChan: ipc, geoIPLog: logGeoIP})
 	}
 	for i := 0; i < ps; i++ {
-		go poolWaiter(rc)
+		go poolWaiter(rc, endLoop)
 	}
 	if logGeoIP {
 		log.Info("GeoIP DB Path:{}", config.GetString("geoIPPath"))
@@ -173,25 +176,35 @@ func stunListener(ss *StunServer) {
 	}
 }
 
-func poolWaiter(reader chan *StunRead) {
+func poolWaiter(reader chan *StunRead, endloop chan bool) {
 	for {
-		sr := <-reader
-		sp, err := stunlib.NewStunPacket(sr.buffer)
-		if err != nil {
-			nonStunPackets.Inc()
-		}
-		log.Debug("Got Stun Packet from:{}", sr.addr)
-		stunRequestsTotal.Inc()
-		rsp := sp.ToBuilder().ClearAttributes().SetStunMessage(stunlib.SMSuccess).SetXORAddress(sr.addr).SetAddress(sr.addr).Build()
-		l, _ := sr.conn.WriteToUDP(rsp.GetBytes(), sr.addr)
-		if l == len(rsp.GetBytes()) {
-			stunProcessLatency.Observe(time.Since(sr.readTime).Seconds())
-			stunBytesSent.Add(float64(l))
-			if sr.geoIPLog {
-				sr.geoIPChan <- sr.addr.IP
-				stunGeoIPQueueSize.Set(float64(len(sr.geoIPChan)))
-				stunQueueSize.Set(float64(len(reader)))
+		select {
+		case sr := <-reader:
+			{
+				sp, err := stunlib.NewStunPacket(sr.buffer)
+				if err != nil {
+					nonStunPackets.Inc()
+					log.Debug("Got Invalid Stun Packet from:{}", sr.addr)
+					continue
+				}
+				log.Debug("Got Stun Packet from:{}", sr.addr)
+				stunRequestsTotal.Inc()
+				rsp := stunlib.NewStunPacketBuilder().SetStunMessage(stunlib.SMSuccess).SetTXID(sp.GetTxID()).SetXORAddress(sr.addr).SetAddress(sr.addr).Build()
+				// rsp := sp.ToBuilder().ClearAttributes().SetStunMessage(stunlib.SMSuccess).SetXORAddress(sr.addr).SetAddress(sr.addr).Build()
+				l, _ := sr.conn.WriteToUDP(rsp.GetBytes(), sr.addr)
+				if l == len(rsp.GetBytes()) {
+					stunProcessLatency.Observe(time.Since(sr.readTime).Seconds())
+					stunBytesSent.Add(float64(l))
+					if sr.geoIPLog {
+						sr.geoIPChan <- sr.addr.IP
+						stunGeoIPQueueSize.Set(float64(len(sr.geoIPChan)))
+					}
+					stunQueueSize.Set(float64(len(reader)))
+				}
 			}
+		case done := <-endloop:
+			log.Info("Got Loop Exit: {}", done)
+			return
 		}
 	}
 }
@@ -221,10 +234,14 @@ type StunServer struct {
 }
 
 type StunRead struct {
-	conn      *net.UDPConn
+	conn      UDPWriter
 	addr      *net.UDPAddr
 	buffer    []byte
 	readTime  time.Time
 	geoIPLog  bool
 	geoIPChan chan net.IP
+}
+
+type UDPWriter interface {
+	WriteToUDP(b []byte, addr *net.UDPAddr) (int, error)
 }

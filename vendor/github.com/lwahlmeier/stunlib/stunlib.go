@@ -200,7 +200,7 @@ func fromStunPacket(sp *StunPacket) *StunPacketBuilder {
 func NewStunPacketBuilder() *StunPacketBuilder {
 	return &StunPacketBuilder{
 		mt:            SMRequest,
-		tid:           CreateTID(),
+		tid:           nil,
 		attribs:       make([]StunAttribute, 0),
 		attribsBuffer: make([][]byte, 0),
 		padding:       0x00,
@@ -286,7 +286,11 @@ func (spb *StunPacketBuilder) Build() *StunPacket {
 	binary.BigEndian.PutUint16(ba[:2], uint16(spb.mt))
 	binary.BigEndian.PutUint16(ba[2:4], uint16(size-20))
 	binary.BigEndian.PutUint32(ba[4:8], stunMagic)
-	copy(ba[8:20], spb.tid.GetTID())
+	if spb.tid == nil {
+		copy(ba[8:20], CreateTID().GetTID())
+	} else {
+		copy(ba[8:20], spb.tid.GetTID())
+	}
 	pos := 20
 	for i, sa := range spb.attribs {
 		sab := spb.attribsBuffer[i]
