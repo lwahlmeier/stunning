@@ -69,7 +69,7 @@ func main() {
 	config.SetEnvPrefix("stunning")
 	config.AutomaticEnv()
 	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
-	if version == "" || version == "lastest" {
+	if version == "" || version == "latest" {
 		version = "unknown"
 	}
 
@@ -121,7 +121,7 @@ func cMain(cmd *cobra.Command, args []string) {
 	case "trace":
 		ll = stimlog.TraceLevel
 	}
-	log.SetLevel(ll)
+	stimlog.GetLoggerConfig().SetLevel(ll)
 	ps := config.GetInt("poolSize")
 	stunAddress := strings.Split(config.GetString("stunAddress"), ",")
 	metricsAddress := config.GetString("metricsAddress")
@@ -191,6 +191,7 @@ func poolWaiter(reader chan *StunRead, endloop chan bool) {
 				stunRequestsTotal.Inc()
 				rsp := stunlib.NewStunPacketBuilder().SetStunMessage(stunlib.SMSuccess).SetTXID(sp.GetTxID()).SetXORAddress(sr.addr).SetAddress(sr.addr).Build()
 				// rsp := sp.ToBuilder().ClearAttributes().SetStunMessage(stunlib.SMSuccess).SetXORAddress(sr.addr).SetAddress(sr.addr).Build()
+
 				l, _ := sr.conn.WriteToUDP(rsp.GetBytes(), sr.addr)
 				if l == len(rsp.GetBytes()) {
 					stunProcessLatency.Observe(time.Since(sr.readTime).Seconds())

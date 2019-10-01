@@ -1,0 +1,2 @@
+# easyatomics
+Simple golang Atomics
