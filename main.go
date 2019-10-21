@@ -96,6 +96,9 @@ func main() {
 	cmd.PersistentFlags().Int("poolSize", 20, "Max pool size (go routines) to use for processing requests")
 	config.BindPFlag("poolSize", cmd.PersistentFlags().Lookup("poolSize"))
 
+	cmd.PersistentFlags().Bool("fingerPrint", false, "Should stun messages add fingerPrints")
+	config.BindPFlag("fingerPrint", cmd.PersistentFlags().Lookup("fingerPrint"))
+
 	cmd.PersistentFlags().Bool("logGeoIP", false, "set to true if we should log GEO IP data (geoIPPath must also be set!)")
 	config.BindPFlag("logGeoIP", cmd.PersistentFlags().Lookup("logGeoIP"))
 	cmd.PersistentFlags().String("geoIPPath", "/tmp/none", "Path to use for GeoIPDB lookups")
@@ -130,16 +133,18 @@ func cMain(cmd *cobra.Command, args []string) {
 	rc := make(chan *StunRead, 500)
 	endLoop := make(chan bool)
 	ipc := make(chan net.IP, 500)
+	fp := config.GetBool("fingerPrint")
 	log.Info("Stun Addresses:{}", stunAddress)
 	log.Info("Metrics Address:{}", metricsAddress)
 	log.Info("PoolSize:{}", ps)
 	log.Info("GeoIP logging:{}", logGeoIP)
+	log.Info("FingerPrint: {}", fp)
 	for _, v := range stunAddress {
 		s, err := net.ResolveUDPAddr("udp", v)
 		CheckError(err)
 		conn, err := net.ListenUDP("udp", s)
 		CheckError(err)
-		stunServers = append(stunServers, &StunServer{readChan: rc, conn: conn, geoIPChan: ipc, geoIPLog: logGeoIP})
+		stunServers = append(stunServers, &StunServer{readChan: rc, conn: conn, geoIPChan: ipc, geoIPLog: logGeoIP, fingerPrint: fp})
 	}
 	for i := 0; i < ps; i++ {
 		go poolWaiter(rc, endLoop)
@@ -172,7 +177,7 @@ func stunListener(ss *StunServer) {
 		}
 		log.Debug("Got UDP Packet from:{}", addr)
 		stunBytesReceived.Add(float64(l))
-		ss.readChan <- &StunRead{conn: ss.conn, buffer: ba[:l], addr: addr, readTime: time.Now(), geoIPLog: ss.geoIPLog, geoIPChan: ss.geoIPChan}
+		ss.readChan <- &StunRead{conn: ss.conn, buffer: ba[:l], addr: addr, readTime: time.Now(), geoIPLog: ss.geoIPLog, geoIPChan: ss.geoIPChan, fingerPrint: ss.fingerPrint}
 	}
 }
 
@@ -189,7 +194,7 @@ func poolWaiter(reader chan *StunRead, endloop chan bool) {
 				}
 				log.Debug("Got Stun Packet from:{}", sr.addr)
 				stunRequestsTotal.Inc()
-				rsp := stunlib.NewStunPacketBuilder().SetStunMessage(stunlib.SMSuccess).SetTXID(sp.GetTxID()).SetXORAddress(sr.addr).SetAddress(sr.addr).Build()
+				rsp := stunlib.NewStunPacketBuilder().SetStunMessage(stunlib.SMSuccess).SetTXID(sp.GetTxID()).SetXORAddress(sr.addr).SetAddress(sr.addr).AddFingerprint(sr.fingerPrint).Build()
 				// rsp := sp.ToBuilder().ClearAttributes().SetStunMessage(stunlib.SMSuccess).SetXORAddress(sr.addr).SetAddress(sr.addr).Build()
 
 				l, _ := sr.conn.WriteToUDP(rsp.GetBytes(), sr.addr)
@@ -228,19 +233,21 @@ func doGeoIP(geoPath string, ipc chan net.IP) {
 }
 
 type StunServer struct {
-	conn      *net.UDPConn
-	readChan  chan *StunRead
-	geoIPLog  bool
-	geoIPChan chan net.IP
+	conn        *net.UDPConn
+	readChan    chan *StunRead
+	geoIPLog    bool
+	geoIPChan   chan net.IP
+	fingerPrint bool
 }
 
 type StunRead struct {
-	conn      UDPWriter
-	addr      *net.UDPAddr
-	buffer    []byte
-	readTime  time.Time
-	geoIPLog  bool
-	geoIPChan chan net.IP
+	conn        UDPWriter
+	addr        *net.UDPAddr
+	buffer      []byte
+	readTime    time.Time
+	geoIPLog    bool
+	geoIPChan   chan net.IP
+	fingerPrint bool
 }
 
 type UDPWriter interface {

@@ -4,7 +4,7 @@ go 1.12
 
 require (
 	github.com/PremiereGlobal/stim v0.1.1
-	github.com/lwahlmeier/stunlib v0.0.2
+	github.com/lwahlmeier/stunlib v0.0.3
 	github.com/oschwald/geoip2-golang v1.3.0
 	github.com/oschwald/maxminddb-golang v1.5.0 // indirect
 	github.com/prometheus/client_golang v0.9.3

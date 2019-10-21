@@ -10,20 +10,20 @@ github.com/deckarep/golang-set
 github.com/fsnotify/fsnotify
 # github.com/hashicorp/hcl v1.0.0
 github.com/hashicorp/hcl
-github.com/hashicorp/hcl/hcl/printer
 github.com/hashicorp/hcl/hcl/ast
 github.com/hashicorp/hcl/hcl/parser
-github.com/hashicorp/hcl/hcl/token
-github.com/hashicorp/hcl/json/parser
+github.com/hashicorp/hcl/hcl/printer
 github.com/hashicorp/hcl/hcl/scanner
 github.com/hashicorp/hcl/hcl/strconv
+github.com/hashicorp/hcl/hcl/token
+github.com/hashicorp/hcl/json/parser
 github.com/hashicorp/hcl/json/scanner
 github.com/hashicorp/hcl/json/token
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
 # github.com/lwahlmeier/easyatomics v0.0.0-20190923210002-52682e1b436d
 github.com/lwahlmeier/easyatomics
-# github.com/lwahlmeier/stunlib v0.0.2
+# github.com/lwahlmeier/stunlib v0.0.3
 github.com/lwahlmeier/stunlib
 # github.com/magiconair/properties v1.8.0
 github.com/magiconair/properties

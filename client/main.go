@@ -22,6 +22,7 @@ var log = stimlog.GetLogger()
 var config *viper.Viper
 var version string
 var errors = easyatomics.AtomicUint64{}
+var fingerPrints = easyatomics.AtomicUint64{}
 var latency = easyatomics.AtomicInt64{}
 var success = easyatomics.AtomicInt64{}
 
@@ -90,6 +91,7 @@ func cMain(cmd *cobra.Command, args []string) {
 	log.Info("latency:\t\t{}", time.Duration(ns.Nanoseconds()/success.Get()))
 	log.Info("success:\t\t{}", success.Get())
 	log.Info("errors:\t\t\t{}", errors.Get())
+	log.Info("fingerPrints:\t\t{}", fingerPrints.Get())
 	td.sort()
 	tda := td.get()
 	if len(tda) > 1 {
@@ -133,6 +135,9 @@ func runClient(reqs, to int, addr string, wait *sync.WaitGroup, td *timeData) {
 			log.Warn("{}", err)
 			errors.Inc()
 			continue
+		}
+		if spr.HasFingerPrint() && stunlib.VerifyFingerPrint(*spr) {
+			fingerPrints.Inc()
 		}
 		na, err := spr.GetAddress()
 		if err != nil {

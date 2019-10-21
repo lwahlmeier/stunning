@@ -1,3 +1,4 @@
+// Package stunlib provides an api for parsing and genrating stun packets
 package stunlib // import "github.com/lwahlmeier/stunlib"
 
 import (
@@ -59,6 +60,8 @@ type TransactionID struct {
 	tid []byte
 }
 
+//NewTID will create a new TransactionID from the provided []byte
+//The []byte must be only 12 bytes
 func NewTID(ba []byte) (*TransactionID, error) {
 	if len(ba) != 12 {
 		return nil, errors.New("Invalid TransactionID!")
@@ -66,24 +69,29 @@ func NewTID(ba []byte) (*TransactionID, error) {
 	return &TransactionID{tid: ba}, nil
 }
 
+//CreateTID will create a new Random TransactionID
 func CreateTID() *TransactionID {
 	ba := make([]byte, 12)
 	rand.Read(ba)
 	return &TransactionID{tid: ba}
 }
 
-func (tid *TransactionID) UnMaskAddress(addr []byte) []byte {
-	return UnmaskAddress(*tid, addr)
+//UnMaskAddress uses this TransactionID to unmask an SAXORMappedAddress
+func (tid *TransactionID) UnMaskAddress(addr []byte) *net.UDPAddr {
+	return UnMaskAddress(*tid, addr)
 }
 
-func (tid *TransactionID) MaskAddress(addr []byte) []byte {
-	return MaskAddress(*tid, addr)
+//MaskAddress takes an net.UDPAddr and turns it into a SAXORMappedAddress []byte
+func (tid *TransactionID) MaskAddress(addr *net.UDPAddr) []byte {
+	return CreateMaskedAddress(*tid, addr)
 }
 
+//GetTID provides this TransactionIDs []byte
 func (tid *TransactionID) GetTID() []byte {
 	return tid.tid
 }
 
+//This prints the TransactionID as a HexString
 func (tid *TransactionID) String() string {
 	return fmt.Sprintf("%X", tid.tid)
 }
@@ -92,6 +100,7 @@ type StunPacket struct {
 	buffer []byte
 }
 
+//NewStunPacket create a new StunPacket from the provided []byte
 func NewStunPacket(b []byte) (*StunPacket, error) {
 	if !IsStunPacket(b) {
 		return nil, errors.New("Not a valid stun packet!")
@@ -99,10 +108,12 @@ func NewStunPacket(b []byte) (*StunPacket, error) {
 	return &StunPacket{buffer: b}, nil
 }
 
+//GetStunMessageType will return the current StunMessage for this StunPacket
 func (sp *StunPacket) GetStunMessageType() StunMessage {
 	return StunMessage(binary.BigEndian.Uint16(sp.buffer[:2]))
 }
 
+//GetAllAttributes will return all the StunAttributes in this StunPacket as an Array
 func (sp *StunPacket) GetAllAttributes() []StunAttribute {
 	sas := make([]StunAttribute, 0)
 	pos := 20
@@ -115,6 +126,7 @@ func (sp *StunPacket) GetAllAttributes() []StunAttribute {
 	return sas
 }
 
+//GetAttribute returns the []byte for a given StunAttribute
 func (sp *StunPacket) GetAttribute(sa StunAttribute) []byte {
 	pos := 20
 	for pos < len(sp.buffer) {
@@ -128,14 +140,17 @@ func (sp *StunPacket) GetAttribute(sa StunAttribute) []byte {
 	return nil
 }
 
+//GetTxID returns the TransactionID for this StunPacket
 func (sp *StunPacket) GetTxID() *TransactionID {
 	return &TransactionID{tid: sp.buffer[8:20]}
 }
 
+//ToBuilder creates a StunPacketBuilder with this StunPackets Data as the base
 func (sp *StunPacket) ToBuilder() *StunPacketBuilder {
 	return fromStunPacket(sp)
 }
 
+//HasAddress returns true if this StunPacket has a MappedAddress of any kind.
 func (sp *StunPacket) HasAddress() bool {
 	sas := sp.GetAllAttributes()
 	for _, sa := range sas {
@@ -147,33 +162,39 @@ func (sp *StunPacket) HasAddress() bool {
 	return false
 }
 
+func (sp *StunPacket) HasFingerPrint() bool {
+	sas := sp.GetAllAttributes()
+	for _, sa := range sas {
+		sab := StunAttribute(sa)
+		if sab == SAFingerPrint {
+			return true
+		}
+	}
+	return false
+}
+
+//GetBytes gets the underliying []byte for this StunPacket
 func (sp *StunPacket) GetBytes() []byte {
 	return sp.buffer
 }
 
+//GetAddress returns the MappedAddress or XORMappedAddress in this StunPacket if its exits
 func (sp *StunPacket) GetAddress() (*net.UDPAddr, error) {
 	var ip net.IP
 	var port uint16
-	ipv6 := false
 	sas := sp.GetAttribute(SAMappedAddress)
 	if len(sas) == 0 {
 		sas = sp.GetAttribute(SAXORMappedAddress)
 		if len(sas) == 0 {
 			return nil, errors.New("MappedAddress Not found!")
 		}
-		ip = net.IP(sp.GetTxID().UnMaskAddress(sas[4:]))
-
-		port = (binary.BigEndian.Uint16(sas[2:4]) ^ stunShortMagic)
-		ipv6 = sas[1] == 2
+		return UnMaskAddress(*sp.GetTxID(), sas), nil
 	} else {
 		ip = net.IP(sas[4:])
 		port = (binary.BigEndian.Uint16(sas[2:4]))
-		ipv6 = sas[1] == 2
-	}
-	if ipv6 {
 		return &net.UDPAddr{IP: ip, Port: int(port)}, nil
 	}
-	return &net.UDPAddr{IP: ip, Port: int(port)}, nil
+
 }
 
 type StunPacketBuilder struct {
@@ -255,18 +276,10 @@ func (spb *StunPacketBuilder) SetXORAddress(ua *net.UDPAddr) *StunPacketBuilder 
 	if ip == nil {
 		ip = ua.IP
 	}
-	aba := spb.tid.MaskAddress([]byte(ip))
-	var saba []byte
-	if len(aba) == 4 {
-		saba = make([]byte, 8)
-		saba[1] = 1
-	} else {
-		saba = make([]byte, 20)
-		saba[1] = 1
+	if spb.tid == nil {
+		spb.tid = CreateTID()
 	}
-	binary.BigEndian.PutUint16(saba[2:4], uint16(ua.Port)^stunShortMagic)
-	copy(saba[4:], aba)
-	spb.SetAttribue(SAXORMappedAddress, saba)
+	spb.SetAttribue(SAXORMappedAddress, CreateMaskedAddress(*spb.tid, ua))
 	return spb
 }
 
@@ -276,11 +289,19 @@ func (spb *StunPacketBuilder) ClearAttributes() *StunPacketBuilder {
 	return spb
 }
 
+func (spb *StunPacketBuilder) AddFingerprint(fp bool) *StunPacketBuilder {
+	spb.fingerprint = fp
+	return spb
+}
+
 func (spb *StunPacketBuilder) Build() *StunPacket {
 	size := 20
 	for _, v := range spb.attribsBuffer {
 		size += len(v) + 4
 		size = (size + 3) & ^3
+	}
+	if spb.fingerprint {
+		size += 8
 	}
 	ba := make([]byte, size)
 	binary.BigEndian.PutUint16(ba[:2], uint16(spb.mt))
@@ -304,6 +325,13 @@ func (spb *StunPacketBuilder) Build() *StunPacket {
 			ba[pos] = spb.padding
 			pos++
 		}
+	}
+	if spb.fingerprint {
+		fps := size - 8
+		fp := CreateStunFingerPrint(ba[:fps])
+		binary.BigEndian.PutUint16(ba[fps:fps+2], uint16(SAFingerPrint))
+		binary.BigEndian.PutUint16(ba[fps+2:fps+4], uint16(4))
+		binary.BigEndian.PutUint32(ba[fps+4:fps+8], fp)
 	}
 	sp, _ := NewStunPacket(ba)
 	return sp
