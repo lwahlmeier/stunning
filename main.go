@@ -186,10 +186,11 @@ func poolWaiter(reader chan *StunRead, endloop chan bool) {
 		select {
 		case sr := <-reader:
 			{
+				log.Debug("Packet from:{}, {}", sr.addr, fmt.Sprintf("%02X", sr.buffer))
 				sp, err := stunlib.NewStunPacket(sr.buffer)
 				if err != nil {
 					nonStunPackets.Inc()
-					log.Debug("Got Invalid Stun Packet from:{}", sr.addr)
+					log.Debug("Got Invalid Stun Packet from:{}, {}", sr.addr, err)
 					continue
 				}
 				log.Debug("Got Stun Packet from:{}", sr.addr)

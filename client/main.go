@@ -1,8 +1,10 @@
 package main // import "github.com/lwahlmeier/stunning/client"
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -57,6 +59,9 @@ func main() {
 	cmd.PersistentFlags().String("loglevel", "info", "level to show logs at (warn, info, debug, trace)")
 	config.BindPFlag("loglevel", cmd.PersistentFlags().Lookup("loglevel"))
 
+	cmd.PersistentFlags().Float64("failpct", 1.0, "percent failure needed to exit with error")
+	config.BindPFlag("failpct", cmd.PersistentFlags().Lookup("failpct"))
+
 	cmd.Execute()
 
 }
@@ -79,6 +84,7 @@ func cMain(cmd *cobra.Command, args []string) {
 	r := config.GetInt("requests")
 	c := config.GetInt("clients")
 	to := config.GetInt("timeout")
+	failpct := config.GetFloat64("failpct")
 	addr := config.GetString("addr")
 	td := timeData{data: make([]time.Duration, 0), lock: &sync.Mutex{}, sps: sets.NewSet()}
 	for i := 0; i < c; i++ {
@@ -86,9 +92,14 @@ func cMain(cmd *cobra.Command, args []string) {
 		wait.Add(1)
 	}
 	wait.Wait()
+
 	ns := time.Nanosecond * time.Duration(latency.Get())
+	latency := time.Duration(0)
+	if success.Get() > 0 {
+		latency = time.Duration(ns.Nanoseconds() / success.Get())
+	}
 	log.Info("total request time:\t{}", ns)
-	log.Info("latency:\t\t{}", time.Duration(ns.Nanoseconds()/success.Get()))
+	log.Info("latency:\t\t{}", latency)
 	log.Info("success:\t\t{}", success.Get())
 	log.Info("errors:\t\t\t{}", errors.Get())
 	log.Info("fingerPrints:\t\t{}", fingerPrints.Get())
@@ -102,9 +113,24 @@ func cMain(cmd *cobra.Command, args []string) {
 	for _, v := range addrs {
 		log.Info("Got IP:\t\t\t{}", v)
 	}
+	tot := float64(r * c)
+	if tot > 0 {
+		if errors.Get() > 0 {
+
+			pct := float64(errors.Get()) / tot
+			log.Debug("Fail:{}, fp:{}", fmt.Sprintf("%.2f", pct), fmt.Sprintf("%.2f", failpct))
+			if pct >= failpct {
+				os.Exit(1)
+			}
+		} else if success.Get() == 0 {
+			os.Exit(1)
+		}
+	}
+	os.Exit(0)
 }
 
 func runClient(reqs, to int, addr string, wait *sync.WaitGroup, td *timeData) {
+	var err error
 	s, err := net.ResolveUDPAddr("udp", "0.0.0.0:0")
 	CheckError(err)
 	conn, err := net.ListenUDP("udp", s)
@@ -123,34 +149,49 @@ func runClient(reqs, to int, addr string, wait *sync.WaitGroup, td *timeData) {
 		ba := make([]byte, 1500)
 		sp := stunlib.NewStunPacketBuilder().SetStunMessage(stunlib.SMRequest).Build()
 		startT := time.Now()
+
 		conn.WriteToUDP(sp.GetBytes(), remoteAddr)
-		n, ua, err := conn.ReadFrom(ba)
-		if err != nil {
-			log.Warn("{}", err)
-			errors.Inc()
-			continue
+		conn.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(to)))
+
+		var spr *stunlib.StunPacket
+		var since time.Duration
+		var ua net.Addr
+		var n int
+		for true {
+			n, ua, err = conn.ReadFrom(ba)
+			since = time.Since(startT)
+			if err != nil {
+				log.Warn("{}", err)
+				errors.Inc()
+				break
+			}
+			spr, err := stunlib.NewStunPacket(ba[:n])
+			if err != nil {
+				log.Warn("{}", err)
+				errors.Inc()
+				break
+			}
+			if spr.GetTxID().String() == sp.GetTxID().String() {
+				break
+			}
 		}
-		spr, err := stunlib.NewStunPacket(ba[:n])
-		if err != nil {
-			log.Warn("{}", err)
-			errors.Inc()
-			continue
+		if spr != nil {
+			if spr.HasFingerPrint() && stunlib.VerifyFingerPrint(*spr) {
+				fingerPrints.Inc()
+			}
+			na, err := spr.GetAddress()
+			if err != nil {
+				log.Warn("{}", err)
+				errors.Inc()
+				continue
+			}
+			td.addAddr(na)
+			log.Debug("SPR:{}, {}=>{}=>{}, delay:{}", spr.GetStunMessageType(), conn.LocalAddr(), ua, na, since)
 		}
-		if spr.HasFingerPrint() && stunlib.VerifyFingerPrint(*spr) {
-			fingerPrints.Inc()
-		}
-		na, err := spr.GetAddress()
-		if err != nil {
-			log.Warn("{}", err)
-			errors.Inc()
-			continue
-		}
-		td.addAddr(na)
-		since := time.Since(startT)
 		td.add(since)
 		latency.IncBy(since.Nanoseconds())
 		success.Inc()
-		log.Debug("SPR:{}, {}=>{}=>{}, delay:{}", spr.GetStunMessageType(), conn.LocalAddr(), ua, na, since)
+
 	}
 	wait.Done()
 }

@@ -27,6 +27,9 @@ echo "---------------------"
 docker run --rm -e VERSION=${VERSION} -e GO111MODULE=on -e HOME=/tmp -u $(id -u ${USER}):$(id -g ${USER}) -v "$PWD":/go/stunning -w /go/stunning golang:1.12.5 \
 ./build.sh
 
+docker run --rm -e VERSION=${VERSION} -e GO111MODULE=on -e HOME=/tmp -u $(id -u ${USER}):$(id -g ${USER}) -v "$PWD":/go/stunning -w /go/stunning/client golang:1.12.5 \
+./build.sh
+
 echo ""
 echo "---------------------"
 echo "Building stunning Container version: ${VERSION}"
