@@ -157,7 +157,10 @@ func cMain(cmd *cobra.Command, args []string) {
 		go stunListener(s)
 	}
 	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(metricsAddress, nil)
+	err := http.ListenAndServe(metricsAddress, nil)
+	if err != nil {
+		log.Fatal("{}", err)
+	}
 }
 
 func CheckError(err error) {
