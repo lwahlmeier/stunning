@@ -165,7 +165,7 @@ func runClient(reqs, to int, addr string, wait *sync.WaitGroup, td *timeData) {
 				errors.Inc()
 				break
 			}
-			spr, err := stunlib.NewStunPacket(ba[:n])
+			spr, err = stunlib.NewStunPacket(ba[:n])
 			if err != nil {
 				log.Warn("{}", err)
 				errors.Inc()
@@ -176,8 +176,12 @@ func runClient(reqs, to int, addr string, wait *sync.WaitGroup, td *timeData) {
 			}
 		}
 		if spr != nil {
-			if spr.HasFingerPrint() && stunlib.VerifyFingerPrint(*spr) {
+			if spr.HasFingerPrint() {
 				fingerPrints.Inc()
+				if !stunlib.VerifyFingerPrint(*spr) {
+					errors.Inc()
+					log.Warn("Bad FingerPrint!")
+				}
 			}
 			na, err := spr.GetAddress()
 			if err != nil {
