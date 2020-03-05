@@ -152,10 +152,10 @@ func runClient(reqs, to int, addr string, wait *sync.WaitGroup, td *timeData) {
 
 		conn.WriteToUDP(sp.GetBytes(), remoteAddr)
 		conn.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(to)))
-
-		var spr *stunlib.StunPacket
+		var err error = nil
+		var spr *stunlib.StunPacket = nil
 		var since time.Duration
-		var ua net.Addr
+		var ua net.Addr = nil
 		var n int
 		for true {
 			n, ua, err = conn.ReadFrom(ba)
@@ -175,13 +175,15 @@ func runClient(reqs, to int, addr string, wait *sync.WaitGroup, td *timeData) {
 				break
 			}
 		}
-		if spr != nil {
+		if spr != nil && spr.GetTxID().String() == sp.GetTxID().String() {
 			if spr.HasFingerPrint() {
 				fingerPrints.Inc()
 				if !stunlib.VerifyFingerPrint(*spr) {
 					errors.Inc()
 					log.Warn("Bad FingerPrint!")
+					continue
 				}
+				success.Inc()
 			}
 			na, err := spr.GetAddress()
 			if err != nil {
@@ -194,7 +196,6 @@ func runClient(reqs, to int, addr string, wait *sync.WaitGroup, td *timeData) {
 		}
 		td.add(since)
 		latency.IncBy(since.Nanoseconds())
-		success.Inc()
 
 	}
 	wait.Done()
