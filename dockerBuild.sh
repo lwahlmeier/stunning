@@ -24,10 +24,10 @@ echo "---------------------"
 echo "Building stunning    "
 echo "---------------------"
 
-docker run --rm -e VERSION=${VERSION} -e GO111MODULE=on -e HOME=/tmp -u $(id -u ${USER}):$(id -g ${USER}) -v "$PWD":/go/stunning -w /go/stunning golang:1.12.5 \
+docker run --rm -e VERSION=${VERSION} -e GO111MODULE=on -e HOME=/tmp -u $(id -u ${USER}):$(id -g ${USER}) -v "$PWD":/go/stunning -w /go/stunning golang:1.15 \
 ./build.sh
 
-docker run --rm -e VERSION=${VERSION} -e GO111MODULE=on -e HOME=/tmp -u $(id -u ${USER}):$(id -g ${USER}) -v "$PWD":/go/stunning -w /go/stunning/client golang:1.12.5 \
+docker run --rm -e VERSION=${VERSION} -e GO111MODULE=on -e HOME=/tmp -u $(id -u ${USER}):$(id -g ${USER}) -v "$PWD":/go/stunning -w /go/stunning/client golang:1.15 \
 ./build.sh
 
 echo ""
@@ -35,7 +35,7 @@ echo "---------------------"
 echo "Building stunning Container version: ${VERSION}"
 echo "---------------------"
 
-DTAG="lwahlmeier/stunning:${VERSION}"
+DTAG="ghcr.io/lwahlmeier/stunning:${VERSION}"
 
 docker build . -t ${DTAG}
 

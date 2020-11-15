@@ -1,6 +1,6 @@
 module github.com/lwahlmeier/stunning
 
-go 1.12
+go 1.15
 
 require (
 	github.com/PremiereGlobal/stim v0.1.1
